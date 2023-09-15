@@ -7,12 +7,15 @@
   <img width="41%" height="195px" src="https://github-readme-stats.vercel.app/api/top-langs/?username=vitor-galdino&layout=compact&hide_border=true&title_color=FF8119&text_color=FF8119&bg_color=0d1117" />
 </div>
 
-[![Ashutosh's github activity graph](https://github-readme-activity-graph.cyclic.app/graph?username=vitor-galdino&bg_color=none&color=FF8119&line=FF9945&point=FFB170&area_color=FFCF70&area=true&hide_border=true)](https://github.com/ashutosh00710/github-readme-activity-graph)
+<br>
+<!-- [![Ashutosh's github activity graph](https://github-readme-activity-graph.cyclic.app/graph?username=vitor-galdino&bg_color=none&color=FF8119&line=FF9945&point=FFB170&area_color=FFCF70&area=true&hide_border=true)](https://github.com/ashutosh00710/github-readme-activity-graph) -->
 
 <div align="center"> 
 <a href="https://www.linkedin.com/in/vitorgaldino/" target="_blank"><img src="https://img.shields.io/badge/-LinkedIn-%230077B5?style=for-the-badge&logo=linkedin&logoColor=white" target="_blank"></a>
 <!-- <a href="#" target="_blank"><img src="https://img.shields.io/badge/-Portfolio-FFFFFF?style=for-the-badge&logo=Processing-Foundation&logoColor=black" target="_blank"></a>  -->
 </div>
+
+<br>
 
 <div align="center">
   
