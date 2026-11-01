@@ -113,4 +113,4 @@ const syncedAt = now.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 mkdirSync('data', { recursive: true });
 mkdirSync('assets', { recursive: true });
 writeFileSync(STATS_FILE, JSON.stringify(stats) + '\n');
-writeFileSync(SVG_FILE, renderTerminal({ stats, heatmap: stats.heatmap, crt: true, syncedAt, world: 'map', since: 2022, sunAt: now, home: { lat: -23.55, lon: -46.63, label: 'brasil / sp', time: now.toLocaleTimeString('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }) } }));
+writeFileSync(SVG_FILE, renderTerminal({ stats, heatmap: stats.heatmap, crt: true, syncedAt, world: 'map', since: 2022, idle: ['the world is just the beginning', 'earth was never the limit'], sunAt: now, home: { lat: -23.55, lon: -46.63, label: 'brasil / sp', time: now.toLocaleTimeString('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }) } }));
