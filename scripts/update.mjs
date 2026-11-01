@@ -11,15 +11,21 @@ const SVG_FILE = 'assets/terminal.svg';
 const EXCLUDE_LANGS = 'JSON,JSON5,YAML,Markdown,SVG,XML,CSV,Text,TOML,INI,Properties,diff,reStructuredText';
 const EXCLUDE_DIRS = 'node_modules,dist,build,.next,out,coverage,vendor,venv,.venv,__pycache__';
 
-async function gql(query, variables = {}) {
-  const res = await fetch('https://api.github.com/graphql', {
-    method: 'POST',
-    headers: { Authorization: `bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, variables }),
-  });
-  const json = await res.json();
-  if (json.errors) throw new Error(JSON.stringify(json.errors));
-  return json.data;
+async function gql(query, variables = {}, attempt = 1) {
+  try {
+    const res = await fetch('https://api.github.com/graphql', {
+      method: 'POST',
+      headers: { Authorization: `bearer ${TOKEN}`, 'Content-Type': 'application/json', Connection: 'close' },
+      body: JSON.stringify({ query, variables }),
+    });
+    const json = await res.json();
+    if (json.errors) throw new Error(JSON.stringify(json.errors));
+    return json.data;
+  } catch (e) {
+    if (attempt >= 4) throw e;
+    await new Promise(r => setTimeout(r, attempt * 3000));
+    return gql(query, variables, attempt + 1);
+  }
 }
 
 async function totalCommits() {
@@ -63,7 +69,7 @@ function countLines(repos) {
     const dir = join(work, full.replace('/', '__'));
     try {
       execFileSync('git', ['clone', '--quiet', '--depth', '1', `https://github.com/${full}.git`, dir], { stdio: 'ignore', env: gitAuthEnv });
-      const out = execFileSync('cloc', ['--vcs=git', '--json', '--quiet', `--exclude-lang=${EXCLUDE_LANGS}`, `--exclude-dir=${EXCLUDE_DIRS}`, '--not-match-f=(package-lock|yarn\\.lock|pnpm-lock|\\.min\\.)'], { cwd: dir, encoding: 'utf8' });
+      const out = execFileSync('cloc', ['.', '--json', '--quiet', `--exclude-lang=${EXCLUDE_LANGS}`, `--exclude-dir=${EXCLUDE_DIRS}`, '--not-match-f=(package-lock|yarn\\.lock|pnpm-lock|\\.min\\.)'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
       const code = out.trim() ? JSON.parse(out).SUM?.code ?? 0 : 0;
       console.log(`repo ${++n}: ${code}`);
       total += code;
