@@ -1,0 +1,108 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { renderTerminal } from './terminal.mjs';
+
+const USER = process.env.GH_USER || 'vitor-galdino';
+const TOKEN = process.env.GH_TOKEN;
+const STATS_FILE = 'data/stats.json';
+const SVG_FILE = 'assets/terminal.svg';
+const EXCLUDE_LANGS = 'JSON,JSON5,YAML,Markdown,SVG,XML,CSV,Text,TOML,INI,Properties,diff,reStructuredText';
+const EXCLUDE_DIRS = 'node_modules,dist,build,.next,out,coverage,vendor,venv,.venv,__pycache__';
+
+async function gql(query, variables = {}) {
+  const res = await fetch('https://api.github.com/graphql', {
+    method: 'POST',
+    headers: { Authorization: `bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, variables }),
+  });
+  const json = await res.json();
+  if (json.errors) throw new Error(JSON.stringify(json.errors));
+  return json.data;
+}
+
+async function totalCommits() {
+  const { user } = await gql('query($l:String!){ user(login:$l){ createdAt } }', { l: USER });
+  const start = new Date(user.createdAt).getUTCFullYear(), now = new Date();
+  let total = 0;
+  for (let y = start; y <= now.getUTCFullYear(); y++) {
+    const from = new Date(Date.UTC(y, 0, 1)).toISOString();
+    const to = y === now.getUTCFullYear() ? now.toISOString() : new Date(Date.UTC(y, 11, 31, 23, 59, 59)).toISOString();
+    const d = await gql('query($l:String!,$f:DateTime!,$t:DateTime!){ user(login:$l){ contributionsCollection(from:$f,to:$t){ totalCommitContributions } } }', { l: USER, f: from, t: to });
+    total += d.user.contributionsCollection.totalCommitContributions;
+  }
+  return total;
+}
+
+async function ownRepos() {
+  const repos = [];
+  let after = null;
+  do {
+    const d = await gql(`query($l:String!,$a:String){ user(login:$l){ repositories(first:100, after:$a, ownerAffiliations:OWNER, isFork:false){
+      pageInfo{ hasNextPage endCursor } nodes{ nameWithOwner isEmpty } } } }`, { l: USER, a: after });
+    const r = d.user.repositories;
+    repos.push(...r.nodes.filter(n => !n.isEmpty).map(n => n.nameWithOwner));
+    after = r.pageInfo.hasNextPage ? r.pageInfo.endCursor : null;
+  } while (after);
+  return repos;
+}
+
+const gitAuthEnv = {
+  ...process.env,
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_CONFIG_COUNT: '1',
+  GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+  GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${TOKEN}`).toString('base64')}`,
+};
+
+function countLines(repos) {
+  const work = mkdtempSync(join(tmpdir(), 'loc-'));
+  let total = 0, n = 0;
+  for (const full of repos) {
+    const dir = join(work, full.replace('/', '__'));
+    try {
+      execFileSync('git', ['clone', '--quiet', '--depth', '1', `https://github.com/${full}.git`, dir], { stdio: 'ignore', env: gitAuthEnv });
+      const out = execFileSync('cloc', ['--vcs=git', '--json', '--quiet', `--exclude-lang=${EXCLUDE_LANGS}`, `--exclude-dir=${EXCLUDE_DIRS}`, '--not-match-f=(package-lock|yarn\\.lock|pnpm-lock|\\.min\\.)'], { cwd: dir, encoding: 'utf8' });
+      const code = out.trim() ? JSON.parse(out).SUM?.code ?? 0 : 0;
+      console.log(`repo ${++n}: ${code}`);
+      total += code;
+    } catch (e) {
+      console.log(`repo ${++n}: skipped`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  return total;
+}
+
+async function contributionWeeks() {
+  const d = await gql('query($l:String!){ user(login:$l){ contributionsCollection{ contributionCalendar{ weeks{ contributionDays{ contributionCount } } } } } }', { l: USER });
+  return d.user.contributionsCollection.contributionCalendar.weeks.map(w => w.contributionDays.map(x => x.contributionCount));
+}
+
+const now = new Date();
+const FULL_EVERY_HOURS = 24;
+const cached = existsSync(STATS_FILE) ? JSON.parse(readFileSync(STATS_FILE, 'utf8')) : null;
+const age = cached?.updatedAt ? (now - new Date(cached.updatedAt)) / 3600000 : Infinity;
+const full = process.env.FORCE_FULL === 'true' || !cached?.heatmap || age >= FULL_EVERY_HOURS - 0.5;
+
+let stats;
+if (full) {
+  stats = {
+    commits: await totalCommits(),
+    loc: countLines(await ownRepos()),
+    heatmap: await contributionWeeks(),
+    updatedAt: now.toISOString(),
+  };
+  console.log('full refresh — commits:', stats.commits, 'loc:', stats.loc);
+} else {
+  stats = cached;
+  console.log(`sun refresh only (stats are ${age.toFixed(1)}h old)`);
+}
+
+const syncedAt = now.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+mkdirSync('data', { recursive: true });
+mkdirSync('assets', { recursive: true });
+writeFileSync(STATS_FILE, JSON.stringify(stats) + '\n');
+writeFileSync(SVG_FILE, renderTerminal({ stats, heatmap: stats.heatmap, crt: true, syncedAt, world: 'map', sunAt: now }));
