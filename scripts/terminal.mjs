@@ -51,7 +51,7 @@ export function subsolar(date) {
 export function renderTerminal(opts = {}) {
   const {
     stats = { commits: 0, loc: 0 }, groups = profile.groups, heatmap = null, crt = false,
-    syncedAt = null, lastCommand = null, world = null, sunAt = null, home = null, since = null,
+    syncedAt = null, lastCommand = null, world = null, sunAt = null, home = null, since = null, idle = null,
   } = opts;
   let t = crt ? 1.1 : 0.4, y = 78, body = '', uid = 0;
   const cur = []; // trilha do cursor: [tempo, x, y]
@@ -250,6 +250,36 @@ ${sunIn ? `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="22" fill="url(
 </g>\n`;
   }
 
+  // frase digitada no último prompt, sem Enter, alternando entre as frases
+  function idleLine(start, ly) {
+    const prefix = 'echo "', full = idle.map(p => `${prefix}${p}"`);
+    const TYPE = 0.065, DEL = 0.028, BLINK = 0.53, FIRST_HOLD = 2.6, HOLD = 5;
+    const mk = () => ({ ev: [], t: 0 });
+    // cada evento: [tempo, frase ativa, caracteres visíveis, cursor visível]
+    const typeTo = (seg, i, from, to) => { for (let n = from; n <= to; n++) { seg.ev.push([seg.t, i, n, 1]); seg.t += TYPE; } };
+    const delTo = (seg, i, from, to) => { for (let n = from; n >= to; n--) { seg.ev.push([seg.t, i, n, 1]); seg.t += DEL; } };
+    const hold = (seg, i, n, secs) => { let on = 1; for (let k = 0; k < secs; k += BLINK) { seg.ev.push([seg.t, i, n, on]); on ^= 1; seg.t += BLINK; } };
+    const P = prefix.length;
+    const intro = mk();
+    typeTo(intro, 0, 0, full[0].length); hold(intro, 0, full[0].length, FIRST_HOLD); delTo(intro, 0, full[0].length, P);
+    const loop = mk();
+    typeTo(loop, 1, P, full[1].length); hold(loop, 1, full[1].length, HOLD); delTo(loop, 1, full[1].length, P);
+    typeTo(loop, 0, P, full[0].length); hold(loop, 0, full[0].length, HOLD); delTo(loop, 0, full[0].length, P);
+    const anim = (seg, attr, fn, begin, repeat) => {
+      const kt = seg.ev.map(e => (e[0] / seg.t).toFixed(5));
+      return `<animate attributeName="${attr}" values="${seg.ev.map(fn).join(';')}" keyTimes="${kt.join(';')}" calcMode="discrete" begin="${s2(begin)}" dur="${s2(seg.t)}" ${repeat ? 'repeatCount="indefinite"' : 'fill="freeze"'}/>`;
+    };
+    const both = (attr, fn) => anim(intro, attr, fn, start, false) + anim(loop, attr, fn, start + intro.t, true);
+    let out = '';
+    full.forEach((txt, i) => {
+      const id = `idle${i}`;
+      out += `<clipPath id="${id}"><rect x="${PX}" y="${ly - 18}" height="24" width="0">${both('width', e => (e[1] === i ? e[2] * CW : 0).toFixed(1))}</rect></clipPath>`;
+      out += `<text x="${PX}" y="${ly}" class="c" clip-path="url(#${id})">${esc(txt)}</text>`;
+    });
+    out += `<rect width="2.5" height="19" y="${ly - 15}" x="${PX + 2}" fill="${C.amber}" opacity="0">${both('x', e => (PX + e[2] * CW + 2).toFixed(1))}${both('opacity', e => e[3])}</rect>`;
+    return out;
+  }
+
   command('whoami');
   output(profile.name, 'name');
   output(`"${profile.tagline}"`, 'd');
@@ -297,8 +327,8 @@ ${sunIn ? `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="22" fill="url(
 <set attributeName="opacity" to="1" begin="${s2(t0)}" fill="freeze"/>
 <animate attributeName="x" values="${cur.map(c => (c[1] + 2).toFixed(1)).join(';')}" keyTimes="${kt.join(';')}" calcMode="discrete" begin="${s2(t0)}" dur="${s2(T - t0)}" fill="freeze"/>
 <animate attributeName="y" values="${cur.map(c => (c[2] - 15).toFixed(1)).join(';')}" keyTimes="${kt.join(';')}" calcMode="discrete" begin="${s2(t0)}" dur="${s2(T - t0)}" fill="freeze"/>
-<animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.5;1" dur="1.05s" begin="${s2(end)}" repeatCount="indefinite"/>
-</rect>`;
+${idle ? `<set attributeName="opacity" to="0" begin="${s2(end + 0.6)}" fill="freeze"/>` : `<animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.5;1" dur="1.05s" begin="${s2(end)}" repeatCount="indefinite"/>`}
+</rect>${idle ? idleLine(end + 0.6, y - LH) : ''}`;
 
   const H = Math.round(y - 4);
   const mid = (H + 36) / 2;
