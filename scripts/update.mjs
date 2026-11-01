@@ -35,8 +35,9 @@ async function totalCommits() {
   for (let y = start; y <= now.getUTCFullYear(); y++) {
     const from = new Date(Date.UTC(y, 0, 1)).toISOString();
     const to = y === now.getUTCFullYear() ? now.toISOString() : new Date(Date.UTC(y, 11, 31, 23, 59, 59)).toISOString();
-    const d = await gql('query($l:String!,$f:DateTime!,$t:DateTime!){ user(login:$l){ contributionsCollection(from:$f,to:$t){ totalCommitContributions } } }', { l: USER, f: from, t: to });
-    total += d.user.contributionsCollection.totalCommitContributions;
+    const d = await gql('query($l:String!,$f:DateTime!,$t:DateTime!){ user(login:$l){ contributionsCollection(from:$f,to:$t){ totalCommitContributions restrictedContributionsCount } } }', { l: USER, f: from, t: to });
+    const cc = d.user.contributionsCollection;
+    total += cc.totalCommitContributions + cc.restrictedContributionsCount;
   }
   return total;
 }
