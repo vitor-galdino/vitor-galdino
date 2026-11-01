@@ -51,7 +51,7 @@ export function subsolar(date) {
 export function renderTerminal(opts = {}) {
   const {
     stats = { commits: 0, loc: 0 }, groups = profile.groups, heatmap = null, crt = false,
-    syncedAt = null, lastCommand = null, world = null, sunAt = null,
+    syncedAt = null, lastCommand = null, world = null, sunAt = null, home = null, since = null,
   } = opts;
   let t = crt ? 1.1 : 0.4, y = 78, body = '', uid = 0;
   const cur = []; // trilha do cursor: [tempo, x, y]
@@ -154,10 +154,12 @@ export function renderTerminal(opts = {}) {
   };
 
   const levels = values => {
-    const max = Math.max(1, ...values);
-    return v => (v === 0 ? 0 : Math.min(4, Math.ceil((v / max) * 4)));
+    const nz = values.filter(v => v > 0).sort((a, b) => a - b);
+    const q = p => nz.length ? nz[Math.min(nz.length - 1, Math.floor(p * nz.length))] : 1;
+    const t1 = q(0.25), t2 = q(0.5), t3 = q(0.75);
+    return v => (v <= 0 ? 0 : v <= t1 ? 1 : v <= t2 ? 2 : v <= t3 ? 3 : 4);
   };
-  const OP = [0.08, 0.3, 0.5, 0.75, 1];
+  const OP = [0.2, 0.55, 0.72, 0.88, 1];
 
   // contribuições: grade de ponta a ponta
   const heatGrid = () => {
@@ -188,14 +190,15 @@ export function renderTerminal(opts = {}) {
     let out = '';
     pts.forEach(([c, r], k) => {
       const day = Math.min(days.length - 1, Math.floor((k * days.length) / pts.length));
-      const time = t + (c / cols) * 1.6;
-      out += `<rect x="${X0 + c * step}" y="${y - 12 + r * step}" width="${dot}" height="${dot}" rx="1.5" fill="${C.amber}" opacity="0.06"><animate attributeName="opacity" from="0.06" to="${Math.max(0.12, OP[lvl(days[day])])}" begin="${s2(time)}" dur="0.3s" fill="freeze"/></rect>`;
+      const time = t + 0.15 + (c / cols) * 1.8 + (r / rowsN) * 0.25;
+      out += `<rect x="${X0 + c * step}" y="${y - 12 + r * step}" width="${dot}" height="${dot}" rx="1.5" fill="${C.amber}" opacity="0"><animate attributeName="opacity" values="0;${OP[lvl(days[day])]}" keySplines="0.25 0.1 0.25 1" calcMode="spline" begin="${s2(time)}" dur="0.9s" fill="freeze"/></rect>`;
     });
-    if (sunAt) out += nightOverlay({ x0: X0, y0: y - 12, step, dot, dlon, top, rowsN, cols, begin: t + 1.8 });
-    body += out + '\n';
+    if (sunAt) out += nightOverlay({ x0: X0, y0: y - 12, step, dot, dlon, top, rowsN, cols, begin: t + 2.2 });
+    if (home) out += homeMarker({ x0: X0, y0: y - 12, step, dot, dlon, top, begin: t + (sunAt ? 3.0 : 2.2) });
+    body += show(out, t);
     y += rowsN * step + 4;
     at(t, X0, y);
-    t += sunAt ? 2.5 : 1.9;
+    t += (sunAt ? 3.0 : 2.2) + (home ? 1.2 : 0.1);
   };
 
   // lado noturno + linha do terminador, calculados para o momento da sincronização
@@ -213,22 +216,50 @@ export function renderTerminal(opts = {}) {
     const edge = dec < 0 ? y0 - 20 : y0 + mapH + 20; // o polo sem sol fica do lado da noite
     const pts = curve.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
     const poly = `${curve[0][0].toFixed(1)},${edge} ${pts} ${curve[curve.length - 1][0].toFixed(1)},${edge}`;
-    const fade = to => `<animate attributeName="opacity" from="0" to="${to}" begin="${s2(begin)}" dur="0.8s" fill="freeze"/>`;
+    const fade = to => `<animate attributeName="opacity" values="0;${to}" keySplines="0.25 0.1 0.25 1" calcMode="spline" begin="${s2(begin)}" dur="1.2s" fill="freeze"/>`;
     const sx = X(sun.lon), sy = Y(sun.lat), sunIn = sy > y0 && sy < y0 + mapH;
     const when = sunAt.toISOString().slice(11, 16);
     return `<clipPath id="mapclip"><rect x="${x0 - 4}" y="${y0 - 4}" width="${mapW + 8}" height="${mapH + 8}"/></clipPath>
 <g clip-path="url(#mapclip)">
-<polygon points="${poly}" fill="#000" opacity="0">${fade(0.55)}</polygon>
+<polygon points="${poly}" fill="#000" opacity="0">${fade(0.45)}</polygon>
 <polyline points="${pts}" fill="none" stroke="${C.soft}" stroke-width="1.2" stroke-dasharray="3 4" opacity="0">${fade(0.55)}</polyline>
 ${sunIn ? `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="22" fill="url(#sun)" opacity="0">${fade(1)}</circle><circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="4" fill="${C.soft}" opacity="0">${fade(1)}</circle>` : ''}
 </g>
 <text x="${x0 + mapW - 8}" y="${y0 + mapH - 2}" text-anchor="end" class="t" opacity="0">${fade(1)}day / night at ${when} UTC</text>\n`;
   }
 
+  // seta apontando pra casa ("me")
+  function homeMarker({ x0, y0, step, dot, dlon, top, begin }) {
+    const X = lon => x0 + ((lon + 180) / dlon - 0.5) * step + dot / 2;
+    const Y = lat => y0 + ((top - lat) / dlon - 0.5) * step + dot / 2;
+    const hx = X(home.lon), hy = Y(home.lat);
+    const kx = hx + 10, ky = hy + 12, ex = kx + 7;  // guia curta em cotovelo, saindo pro Atlântico
+    const len = (Math.hypot(kx - hx, ky - hy) - 6 + (ex - kx)).toFixed(1);
+    const sx = hx + 4.5, sy = hy + 4.5;
+    const local = home.time ? ` · ${home.time}` : '';
+    const b = s2(begin), b2 = s2(begin + 0.35);
+    return `<g>
+<circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="3.5" fill="${C.soft}" opacity="0"><animate attributeName="opacity" values="0;1" begin="${b}" dur="0.5s" fill="freeze"/></circle>
+<circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="4" fill="none" stroke="${C.soft}" stroke-width="1.5" opacity="0"><animate attributeName="r" values="4;13" dur="1.8s" begin="${b}" repeatCount="indefinite"/><animate attributeName="opacity" values="0.9;0" dur="1.8s" begin="${b}" repeatCount="indefinite"/></circle>
+<polyline points="${sx.toFixed(1)},${sy.toFixed(1)} ${kx.toFixed(1)},${ky.toFixed(1)} ${ex.toFixed(1)},${ky.toFixed(1)}" fill="none" stroke="${C.soft}" stroke-width="1" stroke-opacity=".55" stroke-dasharray="${len}" stroke-dashoffset="${len}"><animate attributeName="stroke-dashoffset" from="${len}" to="0" begin="${b}" dur="0.4s" fill="freeze"/></polyline>
+<g opacity="0"><animate attributeName="opacity" values="0;1" keySplines="0.25 0.1 0.25 1" calcMode="spline" begin="${b2}" dur="0.9s" fill="freeze"/><animateTransform attributeName="transform" type="translate" values="-6 0;0 0" keySplines="0.25 0.1 0.25 1" calcMode="spline" begin="${b2}" dur="0.9s" fill="freeze"/>
+<rect x="${(ex + 1).toFixed(1)}" y="${(ky - 9).toFixed(1)}" width="${((Math.max(2, (home.label || '').length + local.length)) * 6 + 8).toFixed(1)}" height="31" rx="4" fill="${C.bg}" fill-opacity=".97" stroke="${C.border}"/>
+<text x="${(ex + 5).toFixed(1)}" y="${(ky + 4).toFixed(1)}" class="me">me</text>
+<text x="${(ex + 5).toFixed(1)}" y="${(ky + 17).toFixed(1)}" class="loc">${esc(home.label || '')}${esc(local)}</text>
+</g>
+</g>\n`;
+  }
+
   command('whoami');
   output(profile.name, 'name');
   output(`"${profile.tagline}"`, 'd');
   statsLine();
+  if (since) {
+    const now = sunAt || new Date(), start = new Date(Date.UTC(since, 0, 1));
+    const yrs = (now - start) / (365.25 * 86400000), full = Math.floor(yrs);
+    const perYear = Math.round(stats.commits / Math.max(yrs, 1) / 10) * 10;
+    output(`coding since ${since} · ${full}+ years · ~${fmt(perYear)} commits/year`, 'd');
+  }
   if (world === 'globe') globe();
 
   for (const g of groups) {
@@ -280,7 +311,7 @@ ${sunIn ? `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="22" fill="url(
 text { font-family: 'JBM', ui-monospace, Menlo, Consolas, monospace; font-size: ${FS}px; white-space: pre; }
 .p { fill: ${C.dim}; } .c { fill: ${C.soft}; } .o { fill: ${C.amber}; } .d { fill: ${C.dim}; }
 .name { fill: ${C.amber}; font-weight: 700; } .n { fill: ${C.soft}; font-weight: 700; }
-.t { fill: ${C.dim}; font-size: 12px; } .g { fill: ${C.amber}; font-size: 9px; } .w { fill: ${C.amber}; font-size: 10px; }
+.t { fill: ${C.dim}; font-size: 12px; } .g { fill: ${C.amber}; font-size: 9px; } .w { fill: ${C.amber}; font-size: 10px; } .me { fill: ${C.soft}; font-size: 12px; font-weight: 700; } .loc { fill: ${C.dim}; font-size: 10px; }
 </style>
 <defs>
 <radialGradient id="glow" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="${C.amber}" stop-opacity=".07"/><stop offset="1" stop-color="${C.amber}" stop-opacity="0"/></radialGradient>
