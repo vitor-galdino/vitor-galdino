@@ -65,7 +65,7 @@ const gitAuthEnv = {
 
 function countLines(repos) {
   const work = mkdtempSync(join(tmpdir(), 'loc-'));
-  let total = 0, n = 0;
+  let total = 0, skipped = 0;
   for (const full of repos) {
     const dir = join(work, full.replace('/', '__'));
     try {
@@ -73,14 +73,14 @@ function countLines(repos) {
       try { clone(gitAuthEnv); } catch { rmSync(dir, { recursive: true, force: true }); clone({ ...process.env, GIT_TERMINAL_PROMPT: '0' }); }
       const out = execFileSync('cloc', ['.', '--json', '--quiet', `--exclude-lang=${EXCLUDE_LANGS}`, `--exclude-dir=${EXCLUDE_DIRS}`, '--not-match-f=(package-lock|yarn\\.lock|pnpm-lock|\\.min\\.)'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
       const code = out.trim() ? JSON.parse(out).SUM?.code ?? 0 : 0;
-      console.log(`repo ${++n}: ${code}`);
       total += code;
     } catch (e) {
-      console.log(`repo ${++n}: skipped`);
+      skipped++;
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }
+  console.log(`repositories: ${repos.length}, skipped: ${skipped}`);
   return total;
 }
 
