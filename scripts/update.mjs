@@ -6,8 +6,9 @@ import { renderTerminal } from './terminal.mjs';
 
 const USER = process.env.GH_USER || 'vtzr';
 const TOKEN = process.env.GH_TOKEN;
-const STATS_FILE = 'data/stats.json';
-const SVG_FILE = 'assets/terminal.svg';
+const OUT_DIR = process.env.OUT_DIR || 'out';
+const STATS_FILE = join(OUT_DIR, 'stats.json');
+const SVG_FILE = join(OUT_DIR, 'terminal.svg');
 const EXCLUDE_LANGS = 'JSON,JSON5,YAML,Markdown,SVG,XML,CSV,Text,TOML,INI,Properties,diff,reStructuredText';
 const EXCLUDE_DIRS = 'node_modules,dist,build,.next,out,coverage,vendor,venv,.venv,__pycache__';
 
@@ -110,7 +111,6 @@ if (full) {
 }
 
 const syncedAt = now.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
-mkdirSync('data', { recursive: true });
-mkdirSync('assets', { recursive: true });
+mkdirSync(OUT_DIR, { recursive: true });
 writeFileSync(STATS_FILE, JSON.stringify(stats) + '\n');
 writeFileSync(SVG_FILE, renderTerminal({ stats, heatmap: stats.heatmap, crt: true, syncedAt, world: 'map', since: 2022, idle: ['the world is just the beginning', 'earth was never the limit'], sunAt: now, home: { lat: -23.55, lon: -46.63, label: 'brasil / sp', time: now.toLocaleTimeString('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }) } }));
