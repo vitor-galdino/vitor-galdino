@@ -23,7 +23,6 @@ const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 const fmt = n => Number(n).toLocaleString('en-US');
 const s2 = n => n.toFixed(3) + 's';
 
-// ---------- mundo (máscara 1°, 180 linhas x 360 colunas) ----------
 let LAND = null;
 const land = () => LAND ??= readFileSync(join(here, 'land.txt'), 'utf8').split('\n');
 const isLand = (lon, lat) => {
@@ -37,7 +36,6 @@ const landFrac = (lon0, lon1, lat0, lat1) => {
   return k ? n / k : 0;
 };
 
-// ponto subsolar (aprox. de baixa precisão, mais que suficiente pra um mapa)
 export function subsolar(date) {
   const rad = Math.PI / 180, d = date.getTime() / 86400000 + 2440587.5 - 2451545.0;
   const g = (357.529 + 0.98560028 * d) * rad, q = 280.459 + 0.98564736 * d;
@@ -54,7 +52,7 @@ export function renderTerminal(opts = {}) {
     syncedAt = null, lastCommand = null, world = null, sunAt = null, home = null, since = null, idle = null,
   } = opts;
   let t = crt ? 1.1 : 0.4, y = 78, body = '', uid = 0;
-  const cur = []; // trilha do cursor: [tempo, x, y]
+  const cur = [];
   const at = (time, x, yy) => cur.push([time, x, yy]);
   const show = (inner, time) => `<g opacity="0"><set attributeName="opacity" to="1" begin="${s2(time)}" fill="freeze"/>${inner}</g>\n`;
 
@@ -98,7 +96,6 @@ export function renderTerminal(opts = {}) {
     at(t - 0.05, X0, y);
   };
 
-  // globo ASCII girando (canto superior direito)
   const globe = () => {
     const R = 26, gfs = 9, gcw = gfs * 0.6, glh = 9.5, cols = Math.round((R * glh) / gcw);
     const gw = cols * gcw, gh = R * glh, gx = W - X0 - gw, gy = 50;
@@ -132,7 +129,6 @@ export function renderTerminal(opts = {}) {
     body += show(out, t);
   };
 
-  // mapa-múndi impresso linha por linha
   const printWorld = () => {
     command('./world --render', '# one line at a time');
     const mfs = 10, mcw = mfs * 0.6, cols = Math.floor(INNER / mcw), dlon = 360 / cols, mlh = 10.5;
@@ -161,7 +157,6 @@ export function renderTerminal(opts = {}) {
   };
   const OP = [0.2, 0.55, 0.72, 0.88, 1];
 
-  // contribuições: grade de ponta a ponta
   const heatGrid = () => {
     command('git contributions --last 52w', '# activity');
     const n = heatmap.length, cell = 12.5, step = (INNER - cell) / (n - 1), lvl = levels(heatmap.flat());
@@ -175,7 +170,6 @@ export function renderTerminal(opts = {}) {
     t += n * 0.018 + 0.3;
   };
 
-  // contribuições: cada ponto de terra é um dia, de oeste (jan) a leste (dez)
   const heatWorld = () => {
     command('git contributions --last 52w --world', '# a year of code, west → east');
     const days = heatmap.flat(), lvl = levels(days);
@@ -201,7 +195,6 @@ export function renderTerminal(opts = {}) {
     t += (sunAt ? 3.0 : 2.2) + (home ? 1.2 : 0.1);
   };
 
-  // lado noturno + linha do terminador, calculados para o momento da sincronização
   function nightOverlay({ x0, y0, step, dot, dlon, top, rowsN, cols, begin }) {
     const sun = subsolar(sunAt), rad = Math.PI / 180;
     const dec = Math.abs(sun.lat) < 0.1 ? 0.1 : sun.lat;
@@ -213,7 +206,7 @@ export function renderTerminal(opts = {}) {
       const lat = Math.atan(-Math.cos((lon - sun.lon) * rad) / Math.tan(dec * rad)) / rad;
       curve.push([X(lon), Y(lat)]);
     }
-    const edge = dec < 0 ? y0 - 20 : y0 + mapH + 20; // o polo sem sol fica do lado da noite
+    const edge = dec < 0 ? y0 - 20 : y0 + mapH + 20;
     const pts = curve.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
     const poly = `${curve[0][0].toFixed(1)},${edge} ${pts} ${curve[curve.length - 1][0].toFixed(1)},${edge}`;
     const fade = to => `<animate attributeName="opacity" values="0;${to}" keySplines="0.25 0.1 0.25 1" calcMode="spline" begin="${s2(begin)}" dur="1.2s" fill="freeze"/>`;
@@ -228,12 +221,11 @@ ${sunIn ? `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="22" fill="url(
 <text x="${x0 + mapW - 8}" y="${y0 + mapH - 2}" text-anchor="end" class="t" opacity="0">${fade(1)}day / night at ${when} UTC</text>\n`;
   }
 
-  // seta apontando pra casa ("me")
   function homeMarker({ x0, y0, step, dot, dlon, top, begin }) {
     const X = lon => x0 + ((lon + 180) / dlon - 0.5) * step + dot / 2;
     const Y = lat => y0 + ((top - lat) / dlon - 0.5) * step + dot / 2;
     const hx = X(home.lon), hy = Y(home.lat);
-    const kx = hx + 10, ky = hy + 12, ex = kx + 7;  // guia curta em cotovelo, saindo pro Atlântico
+    const kx = hx + 10, ky = hy + 12, ex = kx + 7;
     const len = (Math.hypot(kx - hx, ky - hy) - 6 + (ex - kx)).toFixed(1);
     const sx = hx + 4.5, sy = hy + 4.5;
     const local = home.time ? ` · ${home.time}` : '';
@@ -250,12 +242,10 @@ ${sunIn ? `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="22" fill="url(
 </g>\n`;
   }
 
-  // frase digitada no último prompt, sem Enter, alternando entre as frases
   function idleLine(start, ly) {
     const prefix = 'echo "', full = idle.map(p => `${prefix}${p}"`);
     const TYPE = 0.065, DEL = 0.028, BLINK = 0.53, FIRST_HOLD = 2.6, HOLD = 5;
     const mk = () => ({ ev: [], t: 0 });
-    // cada evento: [tempo, frase ativa, caracteres visíveis, cursor visível]
     const typeTo = (seg, i, from, to) => { for (let n = from; n <= to; n++) { seg.ev.push([seg.t, i, n, 1]); seg.t += TYPE; } };
     const delTo = (seg, i, from, to) => { for (let n = from; n >= to; n--) { seg.ev.push([seg.t, i, n, 1]); seg.t += DEL; } };
     const hold = (seg, i, n, secs) => { let on = 1; for (let k = 0; k < secs; k += BLINK) { seg.ev.push([seg.t, i, n, on]); on ^= 1; seg.t += BLINK; } };
@@ -311,14 +301,12 @@ ${sunIn ? `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="22" fill="url(
     for (const l of lastCommand.output) output(l);
   }
 
-  // prompt final, onde o cursor para e fica piscando
   gap();
   body += show(`<text x="${X0}" y="${y}" class="p">${esc(PROMPT)}</text>`, t);
   at(t, PX, y);
   const end = t;
   y += LH;
 
-  // cursor único que acompanha toda a digitação
   cur.sort((a, b) => a[0] - b[0]);
   const T = end + 0.01, t0 = cur[0][0];
   const kt = cur.map(c => ((c[0] - t0) / (T - t0)).toFixed(5));
