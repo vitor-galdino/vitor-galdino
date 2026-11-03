@@ -9,6 +9,10 @@ on:
         description: 'Recount commits and lines of code now'
         type: boolean
         default: true
+      source:
+        description: 'Trigger source'
+        type: string
+        default: manual
   push:
     branches: [main]
     paths: ['scripts/**', '.github/workflows/update-terminal.yml']
@@ -36,12 +40,18 @@ jobs:
             last=$(git log -1 --format=%ct FETCH_HEAD)
           fi
           age=$(( $(date +%s) - last ))
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$age" -lt 3000 ]; then
+          limit=0
+          if [ "$EVENT" = "schedule" ]; then limit=4200; fi
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$SOURCE" = "cron" ]; then limit=3000; fi
+          if [ "$age" -lt "$limit" ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "last update $((age / 60)) min ago, skipping"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
+        env:
+          EVENT: ${{ github.event_name }}
+          SOURCE: ${{ inputs.source }}
 
       - uses: actions/setup-node@v4
         if: steps.gate.outputs.run == 'true'
